@@ -153,11 +153,6 @@
     <div class="relay-control">
         <button id="relayButton" class="relay-button">Turn Relay ON</button>
     </div>
-
-    <div class="footer">
-        Made by Gain Nambeye <span>❤️😁</span>
-    </div>
-
     <script>
         // CSRF Token
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -374,7 +369,8 @@
             fetchTemperatureAndHumidity();
         
             // Fetch data every 1 second
-            setInterval(fetchTemperatureAndHumidity, 1000);                
+            setInterval(fetchTemperatureAndHumidity, 1000);
+                
     </script>
 </body>
 </html>
