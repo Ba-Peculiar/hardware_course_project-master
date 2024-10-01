@@ -117,6 +117,11 @@
             color: #1e90ff;
         }
 
+        .error-message {
+            color: #ff4500;
+            margin-top: 10px;
+        }
+
         @media (max-width: 768px) {
             .charts-container {
                 flex-direction: column;
@@ -145,14 +150,16 @@
     </div>
 
     <div class="relay-control">
-        <input type="text" id="relayInput" placeholder="Enter 'on' or 'off'">
-        <button id="relaySubmit" class="relay-button">Submit</button>
+        <input type="text" id="relayInput" placeholder="Enter 'on' or 'off'" aria-label="Relay control input">
+        <button id="relaySubmit" class="relay-button" disabled>Submit</button>
         <p id="feedbackMessage" class="feedback"></p>
+        <p id="errorMessage" class="error-message"></p>
     </div>
 
     <div class="relay-control">
-        <button id="relayButton" class="relay-button">Turn Relay ON</button>
+        <button id="relayButton" class="relay-button" aria-label="Toggle relay">Turn Relay ON</button>
     </div>
+
     <script>
         // CSRF Token
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -218,159 +225,118 @@
             }
         });
 
-        // Fetching data in real-time (Example using setInterval)
-        setInterval(async function() {
-            try {
-                const response = await fetch('/api/sensor-data', {
-                    method: 'GET',
-                    headers: {
-                        'X-CSRF-TOKEN': csrfToken
-                    }
+        // Fetching data in real-time every 5 seconds
+        setInterval(fetchAllData, 5000); // Unified fetching
+
+        function fetchAllData() {
+            fetchTemperatureAndHumidity();
+            fetchSensorData(); // You can define this function to fetch sensor data if needed.
+        }
+
+        // Function to fetch temperature and humidity from the API
+        function fetchTemperatureAndHumidity() {
+            fetch('/api/get-readings/')
+                .then(response => response.json())
+                .then(data => {
+                    const currentTemperature = data.temperature;
+                    const currentHumidity = data.humidity;
+                    const currentTime = new Date().toLocaleTimeString();
+
+                    // Update the displayed values
+                    document.getElementById('temperatureValue').textContent = `${currentTemperature} °C`;
+                    document.getElementById('humidityValue').textContent = `${currentHumidity} %`;
+
+                    // Update the charts
+                    updateChart(temperatureChart, currentTime, currentTemperature);
+                    updateChart(humidityChart, currentTime, currentHumidity);
+
+                })
+                .catch(error => {
+                    console.error('Error fetching temperature and humidity:', error);
+                    document.getElementById('errorMessage').textContent = 'Error fetching temperature and humidity data.';
                 });
-                const data = await response.json();
+        }
 
-                // Update chart data and labels
-                const currentTime = new Date().toLocaleTimeString();
-                labels.push(currentTime);
-
-                // Limit the number of points on the chart
-                if (labels.length > 10) labels.shift();
-                if (temperatureData.length > 10) temperatureData.shift();
-                if (humidityData.length > 10) humidityData.shift();
-
-                temperatureData.push(data.temperature);
-                humidityData.push(data.humidity);
-
-                temperatureChart.update();
-                humidityChart.update();
-
-            } catch (error) {
-                console.error('Error fetching sensor data:', error);
+        // Update chart data and labels
+        function updateChart(chart, currentTime, currentValue) {
+            // Limit the number of points on the chart
+            if (labels.length > 9) {
+                labels.shift();
+                chart.data.datasets[0].data.shift();
             }
-        }, 5000); // Update every 5 seconds
 
+            labels.push(currentTime);
+            chart.data.labels.push(currentTime);
+            chart.data.datasets[0].data.push(currentValue);
+
+            chart.update();
+        }
+
+        // Function to toggle relay status
+        function toggleRelay() {
+            relayStatus = !relayStatus;
+            relayButton.textContent = relayStatus ? 'Turn Relay OFF' : 'Turn Relay ON';
+            relayButton.classList.toggle('active', relayStatus);
+
+            // Send relay state to server using POST request with JSON payload
+            fetch('/relay/control/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken // Include CSRF token
+                },
+                body: JSON.stringify({ state: relayStatus ? 'on' : 'off' })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Handle success or error response from the server
+                console.log('Relay toggled:', data);
+            })
+            .catch(error => {
+                console.error('Error toggling relay:', error);
+                document.getElementById('errorMessage').textContent = 'Error toggling relay.';
+            });
+        }
+
+        // Handle relay input submission
+        const relayInput = document.getElementById('relayInput');
+        const relaySubmit = document.getElementById('relaySubmit');
         
-            // Function to fetch temperature and humidity from the API
-            function fetchTemperatureAndHumidity() {
-                fetch('/api/get-readings/')
-                    .then(response => response.json())
-                    .then(data => {
-                        const currentTemperature = data.temperature;
-                        const currentHumidity = data.humidity;
-                        const currentTime = new Date().toLocaleTimeString();
-        
-                        // Update the displayed values
-                        temperatureElement.textContent = `${currentTemperature} °C`;
-                        humidityElement.textContent = `${currentHumidity} %`;
-        
-                        // Update the timestamps
-                        tempTimestampElement.textContent = `Last updated: ${currentTime}`;
-                        humidityTimestampElement.textContent = `Last updated: ${currentTime}`;
-        
-                        // Update the charts
-                        if (temperatureChart.data.labels.length > 9) {
-                            temperatureChart.data.labels.shift();
-                            temperatureChart.data.datasets[0].data.shift();
-                        }
-                        if (humidityChart.data.labels.length > 9) {
-                            humidityChart.data.labels.shift();
-                            humidityChart.data.datasets[0].data.shift();
-                        }
-        
-                        temperatureChart.data.labels.push(currentTime);
-                        temperatureChart.data.datasets[0].data.push(currentTemperature);
-        
-                        humidityChart.data.labels.push(currentTime);
-                        humidityChart.data.datasets[0].data.push(currentHumidity);
-        
-                        temperatureChart.update();
-                        humidityChart.update();
-                    })
-                    .catch(error => {
-                        console.error('Error fetching temperature and humidity:', error);
-                    });
-            }
-        
-            // Function to toggle relay status
-            function toggleRelay() {
-                relayStatus = !relayStatus;
-                relayButton.textContent = relayStatus ? 'Turn Relay OFF' : 'Turn Relay ON';
-                relayButton.classList.toggle('active', relayStatus);
-        
-                // Send relay state to server using POST request with JSON payload
+        relayInput.addEventListener('input', () => {
+            const inputValue = relayInput.value.toLowerCase();
+            relaySubmit.disabled = !(inputValue === 'on' || inputValue === 'off');
+        });
+
+        relaySubmit.addEventListener('click', () => {
+            const relayState = relayInput.value.toLowerCase();
+            if (relayState === 'on' || relayState === 'off') {
+                // Send relay state to server using POST request
                 fetch('/relay/control/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRFToken': getCsrfToken() // Include CSRF token if necessary
+                        'X-CSRFToken': csrfToken // Include CSRF token
                     },
-                    body: JSON.stringify({ relay_state: relayStatus ? 'true' : 'false' })
+                    body: JSON.stringify({ state: relayState })
                 })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
-                    return response.json();
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('feedbackMessage').textContent = `Relay turned ${relayState}.`;
+                    document.getElementById('errorMessage').textContent = ''; // Clear error message
                 })
-                .then(data => console.log(data))
-                .catch(error => console.error('Error toggling relay:', error));
+                .catch(error => {
+                    console.error('Error toggling relay:', error);
+                    document.getElementById('errorMessage').textContent = 'Error toggling relay.';
+                });
             }
-        
-            // Function to handle text input submission
-            function handleTextInput() {
-                const relayStateInput = relayInput.value.trim().toLowerCase();
-                feedbackMessage.textContent = ''; // Clear previous feedback message
-        
-                if (relayStateInput === 'on' || relayStateInput === 'off') {
-                    const relayState = relayStateInput === 'on' ? 'true' : 'false';
-        
-                    // Send relay state to server using POST request with JSON payload
-                    fetch('/relay/control/', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': getCsrfToken()
-                        },
-                        body: JSON.stringify({ relay_state: relayState })
-                    })
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Network response was not ok');
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (data.relay_state === 'true') {
-                            feedbackMessage.textContent = 'Relay turned ON';
-                            feedbackMessage.style.color = 'green'; // Success message color
-                        } else if (data.relay_state === 'false') {
-                            feedbackMessage.textContent = 'Relay turned OFF';
-                            feedbackMessage.style.color = 'green'; // Success message color
-                        }
-                    })
-                    .catch(error => {
-                        feedbackMessage.textContent = 'Error toggling relay: ' + error.message;
-                        feedbackMessage.style.color = '#ff4500'; // Error message color
-                    });
-                } else {
-                    // Show error message for invalid input
-                    feedbackMessage.textContent = 'Invalid input. Please enter "on" or "off".';
-                    feedbackMessage.style.color = '#ff4500'; // Error message color
-                }
-        
-                relayInput.value = ''; // Clear the input field
-            }
-        
-            // Event listeners
-            relayButton.addEventListener('click', toggleRelay);
-            relaySubmit.addEventListener('click', handleTextInput);
-        
-            // Fetch initial data
-            fetchTemperatureAndHumidity();
-        
-            // Fetch data every 1 second
-            setInterval(fetchTemperatureAndHumidity, 1000);
-                
+        });
+
+        // Initial relay status
+        let relayStatus = false;
+        const relayButton = document.getElementById('relayButton');
+        relayButton.addEventListener('click', toggleRelay);
+
     </script>
 </body>
 </html>
+
